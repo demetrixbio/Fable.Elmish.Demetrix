@@ -36,56 +36,70 @@ let private optionOfString str =
     if System.String.IsNullOrWhiteSpace(str) then None else Some(str.Trim())
 
 let private mkInputWithIcon icon inputType value htmlProps dispatch =
-    Control.div [Control.HasIconLeft] [
+    Control.div [
+        Control.HasIconLeft
+        Control.Props [ Style [ MarginBottom "15px" ] ]
+    ] [
         Input.input [
             Input.Value value
             Input.Type inputType
             Input.Props htmlProps
+            Input.OnChange (fun ev -> ev.Value |> dispatch)
         ]
         Icon.icon [Icon.IsLeft] [Fa.i [icon] []]
     ]
 
 let private login (model: Model<'model>) dispatch =
-    Card.card [ CustomClass "login" ]
-        [ Card.content []
-              [ Heading.h2 [] [ str "Login" ]
+    let validRequest =
+        match optionOfString model.Request.Username,
+              optionOfString model.Request.Password with
+        | Some name, Some pw -> Some { Username = name; Password = pw }
+        | _ -> None
 
-                model.Error
-                |> Option.map (fun err -> Help.help [ Help.Color IsDanger ] [ str err.Message ])
-                |> ofOption
+    Card.card [] [
+        Card.header [] [
+            Card.Header.title [
+                Card.Header.Title.IsCentered
+            ] [ Heading.h3 [] [str "Login"] ]
+        ]
+        Card.content [] [
+            model.Error
+            |> Option.map (fun err -> Help.help [ Help.Color IsDanger ] [ str err.Message ])
+            |> ofOption
 
-                mkInputWithIcon Fa.Solid.User Input.Text model.Request.Username [
-                    AutoFocus true
-                    Placeholder "Username"
-                ] (UpdateUsername >> dispatch)
+            mkInputWithIcon Fa.Solid.User Input.Text model.Request.Username [
+                AutoFocus true
+                Placeholder "Username"
+            ] (UpdateUsername >> dispatch)
 
-                mkInputWithIcon Fa.Solid.Lock Input.Password model.Request.Password [
-                    Placeholder "Password"
-                ] (UpdatePassword >> dispatch)
+            // TODO: Request authentication when hitting enter
+            mkInputWithIcon Fa.Solid.Lock Input.Password model.Request.Password [
+                Placeholder "Password"
+            ] (UpdatePassword >> dispatch)
 
-                Button.button [ yield Button.Color IsPrimary
-                                yield Button.Size IsMedium
-                                yield Button.IsFullWidth
-                                match optionOfString model.Request.Username,
-                                      optionOfString model.Request.Password with
-                                | Some name, Some pw ->
-                                    yield Button.OnClick(fun _ ->
-                                            { Username = name; Password = pw }
-                                            |> RequestAuthentication
-                                            |> dispatch)
-                                | _ -> yield Button.Disabled true ]
-                    [ str "Sign in" ] ] ]
+            Button.button [
+                Button.Color IsPrimary
+                Button.Size IsMedium
+                Button.IsFullWidth
+                Button.OnClick(fun _ ->
+                    validRequest
+                    |> Option.iter (RequestAuthentication >> dispatch))
+                Button.Disabled(model.Loading || Option.isNone validRequest)
+                Button.IsLoading model.Loading
+            ] [ str "Sign in" ]
+        ]
+    ]
 
 let defaultLoginView (model: Model<'model>) (dispatch: Dispatch<Msg<'user, 'msg>>): ReactElement =
-    // TODO: Display error and loader if necessary
     Hero.hero [ Hero.IsFullHeight; Hero.IsMedium; Hero.IsBold ]
         [ Hero.body []
               [ Container.container [ Container.IsFluid ]
                     [ Columns.columns [ Columns.IsCentered ]
                           [ login model dispatch ] ] ] ]
 
+let [<Literal>] STORAGE_KEY = "__AUTHENTICATION_STORAGE__"
+
 module Program =
-    let [<Literal>] STORAGE_KEY = "__AUTHENTICATION_STORAGE__"
 
     let withAuthenticationCoders (encodeUser: Encoder<'user>)
                                  (decodeUser: Decoder<'user>)
@@ -109,7 +123,7 @@ module Program =
                             | Ok user ->
                                 Cmd.OfPromise.either testUser user
                                     (fun x -> TestUserResult(user, Ok x))
-                                    (fun er -> TestUserResult(user, Error er)) 
+                                    (fun er -> TestUserResult(user, Error er))
                             | Error er ->
                                 JS.console.error("Cannot deserialized stored user", er, userJson)
                                 Cmd.none
@@ -128,7 +142,8 @@ module Program =
                 | UpdatePassword password ->
                     { model with Request = { model.Request with Password = password } }, Cmd.none
                 | RequestAuthentication req ->
-                    model, Cmd.OfPromise.either authenticate req (Ok >> AuthenticationResult) (Error >> AuthenticationResult)
+                    { model with Error = None; Loading = true },
+                    Cmd.OfPromise.either authenticate req (Ok >> AuthenticationResult) (Error >> AuthenticationResult)
                 | AuthenticationResult(Ok user) ->
                     // Store user in localStorage
                     window.localStorage.setItem(STORAGE_KEY, encodeUser user |> Encode.toString 0)
@@ -137,7 +152,7 @@ module Program =
                 | AuthenticationResult(Error er) ->
                     { model with Error = Some er; Loading = false }, Cmd.none
                 | TestUserResult(user, Ok pass) ->
-                    let cmd = if pass then setUser user |> AppMsg |> Cmd.OfFunc.result else Cmd.none 
+                    let cmd = if pass then setUser user |> AppMsg |> Cmd.OfFunc.result else Cmd.none
                     { model with Error = None; Loading = false }, cmd
                 | TestUserResult(_, Error er) ->
                     { model with Error = Some er; Loading = false }, Cmd.none
@@ -151,7 +166,7 @@ module Program =
             let mapSubscribe subscribe model =
                 subscribe model.Model |> Cmd.map AppMsg
 
-            Program.map mapInit mapUpdate mapView mapSetState mapSubscribe program        
+            Program.map mapInit mapUpdate mapView mapSetState mapSubscribe program
 
     let inline withAuthentication (getUser: 'model->'user option)
                                   (setUser: 'user -> 'msg)
