@@ -1,4 +1,3 @@
-/// A module that removes the burden of handling authentication from an encapsulated client Elmish application
 [<RequireQualifiedAccess>]
 module Fable.Elmish.Demetrix.Authentication
 
