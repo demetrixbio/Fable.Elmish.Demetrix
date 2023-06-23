@@ -4,7 +4,7 @@
     "build": "fable Build.fsx --run"
   },
   "dependencies": {
-    "fable-compiler-js": "^1.0.5",
+    "fable-compiler-js": "^3.0.0",
     "fable-publish-utils": "^1.0.5"
   }
 }
